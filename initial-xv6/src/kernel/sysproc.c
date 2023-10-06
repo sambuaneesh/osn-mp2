@@ -108,3 +108,9 @@ sys_waitx(void)
     return -1;
   return ret;
 }
+
+int
+sys_getreadcount(void)
+{
+  return myproc()->readcount;
+}

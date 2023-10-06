@@ -23,6 +23,7 @@ char* sbrk(int);
 int sleep(int);
 int uptime(void);
 int waitx(int*, int* /*wtime*/, int* /*rtime*/);
+int getreadcount(void); // returns the number of read system calls a process has invoked so far
 
 // ulib.c
 int stat(const char*, struct stat*);

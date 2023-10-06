@@ -48,6 +48,7 @@ void procinit(void)
 {
   struct proc *p;
 
+
   initlock(&pid_lock, "nextpid");
   initlock(&wait_lock, "wait_lock");
   for (p = proc; p < &proc[NPROC]; p++)
@@ -56,6 +57,7 @@ void procinit(void)
     p->state = UNUSED;
     p->kstack = KSTACK((int)(p - proc));
   }
+  p->readcount = 0; // Initialize readcount to 0
 }
 
 // Must be called with interrupts disabled,
