@@ -114,3 +114,29 @@ sys_getreadcount(void)
 {
   return myproc()->readcount;
 }
+
+uint64 sys_sigalarm(void)
+{
+    uint64 addr;
+    int ticks;
+    (void)argint(0, &ticks);
+    (void)argaddr(1, &addr);
+
+    struct proc *p = myproc();
+    p->ticks = ticks;
+    p->handler = addr;
+    p->alarm_on = 1;
+
+    return 0;
+}
+
+
+uint64 sys_sigreturn(void)
+{
+  struct proc *p = myproc();
+  memmove(p->trapframe, p->alarm_tf, PGSIZE);
+  kfree(p->alarm_tf);
+  p->cur_ticks = 0;
+  p->handlerpermission = 1;
+  return myproc()->trapframe->a0;
+}

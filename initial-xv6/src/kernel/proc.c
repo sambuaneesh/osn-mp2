@@ -154,6 +154,9 @@ found:
   p->rtime = 0;
   p->etime = 0;
   p->ctime = ticks;
+  p->alarm_on = 0;
+  p->cur_ticks = 0;
+  p->handlerpermission = 1;
   return p;
 }
 

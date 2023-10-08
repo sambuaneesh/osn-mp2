@@ -120,6 +120,14 @@ struct proc
   uint rtime;                  // How long the process ran for
   uint ctime;                  // When was the process created
   uint etime;                  // When did the process exited
+  uint64 handler;              // Address of signal handler
+  int ticks;             // Number of ticks after which the signal handler is to be called
+  int cur_ticks;         // Number of ticks after which the signal handler is to be called
+  struct trapframe *alarm_tf;  // Trapframe for alarm
+  int alarm_on;                // Is alarm on
+  // uint64 var1;
+  // uint64 var2;
+  int handlerpermission;
 };
 
 extern struct proc proc[NPROC];

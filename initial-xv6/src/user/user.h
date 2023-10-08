@@ -24,6 +24,8 @@ int sleep(int);
 int uptime(void);
 int waitx(int*, int* /*wtime*/, int* /*rtime*/);
 int getreadcount(void); // returns the number of read system calls a process has invoked so far
+int sigalarm(int ticks, void (*handler)()); // sets the alarm to go off in ticks ticks
+int sigreturn(void); // returns the control to the point in the program where the alarm was set
 
 // ulib.c
 int stat(const char*, struct stat*);
