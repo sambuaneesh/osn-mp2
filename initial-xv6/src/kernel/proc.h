@@ -128,6 +128,8 @@ struct proc
   // uint64 var1;
   // uint64 var2;
   int handlerpermission;
+  int created_time;            // When was the process created FCFS
+  int arrival_time_cx;
 };
 
 extern struct proc proc[NPROC];

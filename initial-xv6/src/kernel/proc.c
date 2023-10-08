@@ -48,7 +48,6 @@ void procinit(void)
 {
   struct proc *p;
 
-
   initlock(&pid_lock, "nextpid");
   initlock(&wait_lock, "wait_lock");
   for (p = proc; p < &proc[NPROC]; p++)
@@ -128,6 +127,8 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
+  p->created_time = ticks;
+  p->arrival_time_cx = ticks;
 
   // Allocate a trapframe page.
   if ((p->trapframe = (struct trapframe *)kalloc()) == 0)
@@ -463,34 +464,57 @@ int wait(uint64 addr)
 //  - swtch to start running that process.
 //  - eventually that process transfers control
 //    via swtch back to the scheduler.
-void scheduler(void)
-{
-  struct proc *p;
-  struct cpu *c = mycpu();
+void scheduler(void) {
+  struct proc *process;
+  struct cpu *cpuObj = mycpu();
 
-  c->proc = 0;
-  for (;;)
-  {
-    // Avoid deadlock by ensuring that devices can interrupt.
+  cpuObj->proc = 0;
+
+  for (;;) {
     intr_on();
 
-    for (p = proc; p < &proc[NPROC]; p++)
-    {
-      acquire(&p->lock);
-      if (p->state == RUNNABLE)
-      {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
-        p->state = RUNNING;
-        c->proc = p;
-        swtch(&c->context, &p->context);
+    int schedulingChoice = 0; // default RR scheduling
 
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        c->proc = 0;
+#ifdef FCFS_SCHED
+    schedulingChoice = 1;
+#endif
+
+    if (schedulingChoice == 0) { // RR scheduling
+      for (process = proc; process < &proc[NPROC]; process++) {
+        acquire(&process->lock);
+        if (process->state == RUNNABLE) {
+          process->state = RUNNING;
+          cpuObj->proc = process;
+          swtch(&cpuObj->context, &process->context);
+          cpuObj->proc = 0;
+        }
+        release(&process->lock);
       }
-      release(&p->lock);
+    } else if (schedulingChoice == 1) { // FCFS scheduling
+      struct proc *firstProcess = 0;
+      for (process = proc; process < &proc[NPROC]; process++) {
+        acquire(&process->lock);
+        if (process->state == RUNNABLE) {
+          if (firstProcess == 0 || process->ctime < firstProcess->ctime) {
+            if (firstProcess != 0) {
+              release(&firstProcess->lock); // Release previous lock
+            }
+            firstProcess = process;
+          } else {
+            release(&process->lock); // Release lock if not chosen
+          }
+        } else {
+          release(&process->lock); // Release lock for non-runnable processes
+        }
+      }
+
+      if (firstProcess != 0) {
+        firstProcess->state = RUNNING;
+        cpuObj->proc = firstProcess;
+        swtch(&cpuObj->context, &firstProcess->context);
+        cpuObj->proc = 0;
+        release(&firstProcess->lock); // Release lock after context switch
+      }
     }
   }
 }

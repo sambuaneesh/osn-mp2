@@ -94,8 +94,10 @@ void usertrap(void)
   }
 
   // give up the CPU if this is a timer interrupt.
-  if (which_dev == 2)
-    yield();
+  #ifdef RR_SCHED
+    if (which_dev == 2)
+      yield();
+  #endif
 
   usertrapret();
 }
@@ -167,8 +169,10 @@ void kerneltrap()
   }
 
   // give up the CPU if this is a timer interrupt.
-  if (which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING)
-    yield();
+  #ifdef RR_SCHED
+    if (which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING)
+     yield();
+  #endif
 
   // the yield() may have caused some traps to occur,
   // so restore trap registers for use by kernelvec.S's sepc instruction.
@@ -197,6 +201,11 @@ void clockintr()
   // }
   wakeup(&ticks);
   release(&tickslock);
+
+  // #ifdef FCFS_SCHED
+  //   // Disable preemption for the current process only if FCFS scheduling is active
+  //   myproc()->disable_preemption = 1;
+  // #endif
 }
 
 // check if it's an external interrupt or software interrupt,
