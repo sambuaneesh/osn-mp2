@@ -158,6 +158,13 @@ found:
   p->alarm_on = 0;
   p->cur_ticks = 0;
   p->handlerpermission = 1;
+  p->no_of_times_scheduled = 0;
+  #ifdef MLFQ_SCHED
+    p->entry_time = ticks;
+    p->current_queue = 0;
+    for (int i = 0; i < 4; i++)
+      p->queue_ticks[i] = 0;
+  #endif
   return p;
 }
 
@@ -464,56 +471,153 @@ int wait(uint64 addr)
 //  - swtch to start running that process.
 //  - eventually that process transfers control
 //    via swtch back to the scheduler.
-void scheduler(void) {
-  struct proc *process;
-  struct cpu *cpuObj = mycpu();
+#define PROC_LOCK(p) (&(p)->lock)
+// need a typedef to declare choices like one, two, three
+struct Choices
+{
+  int one,two,three;
+};
 
-  cpuObj->proc = 0;
+void scheduler(void)
+{
+  struct proc *p;
+  struct cpu *c = mycpu();
+  struct Choices sched = {1,2,3};
+  sched.one = 1; sched.two = 2; sched.three = 3;
+  c->proc = 0;
 
-  for (;;) {
+  while(1)
+  {
     intr_on();
 
-    int schedulingChoice = 0; // default RR scheduling
+    int choice = sched.one; // default RR scheduling
 
 #ifdef FCFS_SCHED
-    schedulingChoice = 1;
+    choice = sched.two;
+#endif
+#ifdef MLFQ_SCHED
+    choice = sched.three;
 #endif
 
-    if (schedulingChoice == 0) { // RR scheduling
-      for (process = proc; process < &proc[NPROC]; process++) {
-        acquire(&process->lock);
-        if (process->state == RUNNABLE) {
-          process->state = RUNNING;
-          cpuObj->proc = process;
-          swtch(&cpuObj->context, &process->context);
-          cpuObj->proc = 0;
+    if (choice == sched.one)
+    { // RR scheduling
+      for (p = proc; p < &proc[NPROC]; p++)
+      {
+        acquire(PROC_LOCK(p));
+        if (p->state == RUNNABLE)
+        {
+          // Switch to chosen process.  It is the process's job
+          // to release its lock and then reacquire it
+          // before jumping back to us.
+          p->state = RUNNING;
+          c->proc = p;
+          swtch(&c->context, &p->context);
+
+          // Process is done running for now.
+          // It should have changed its p->state before coming back.
+          c->proc = 0;
         }
-        release(&process->lock);
+        release(PROC_LOCK(p));
       }
-    } else if (schedulingChoice == 1) { // FCFS scheduling
-      struct proc *firstProcess = 0;
-      for (process = proc; process < &proc[NPROC]; process++) {
-        acquire(&process->lock);
-        if (process->state == RUNNABLE) {
-          if (firstProcess == 0 || process->ctime < firstProcess->ctime) {
-            if (firstProcess != 0) {
-              release(&firstProcess->lock); // Release previous lock
+    }
+    else if (choice == sched.two)
+    { // FCFS scheduling
+      struct proc *first_proc = 0;
+      for (p = proc; p < &proc[NPROC]; p++)
+      {
+        acquire(PROC_LOCK(p));
+        if (p->state == RUNNABLE)
+        {
+          if (first_proc == 0 || p->ctime < first_proc->ctime)
+          {
+            if (first_proc != 0)
+            {
+              release(PROC_LOCK(first_proc)); // Release previous lock
             }
-            firstProcess = process;
-          } else {
-            release(&process->lock); // Release lock if not chosen
+            first_proc = p;
           }
-        } else {
-          release(&process->lock); // Release lock for non-runnable processes
+          else
+          {
+            release(PROC_LOCK(p)); // Release lock if not chosen
+          }
+        }
+        else
+        {
+          release(PROC_LOCK(p)); // Release lock for non-runnable processes
         }
       }
 
-      if (firstProcess != 0) {
-        firstProcess->state = RUNNING;
-        cpuObj->proc = firstProcess;
-        swtch(&cpuObj->context, &firstProcess->context);
-        cpuObj->proc = 0;
-        release(&firstProcess->lock); // Release lock after context switch
+      if (first_proc != 0)
+      {
+        first_proc->state = RUNNING;
+        c->proc = first_proc;
+        swtch(&c->context, &first_proc->context);
+        c->proc = 0;
+        release(PROC_LOCK(first_proc)); // Release lock after context switch
+      }
+    }
+    else if (choice == sched.three)
+    { // MLFQ Scheduling
+      struct proc *chosenProc = 0;
+      int highest_queue = MLFQ_QUEUES;
+
+      // Aging the processes
+      for (p = proc; p < &proc[NPROC]; p++)
+      {
+        if (p->state == RUNNABLE)
+        {
+          if ((ticks - p->entry_time > WAITING_LIMIT) && p->current_queue > 0)
+          {
+            acquire(PROC_LOCK(p));
+            p->queue_ticks[p->current_queue] += (ticks - p->entry_time);
+            p->current_queue--;
+            p->entry_time = ticks;
+            release(PROC_LOCK(p));
+          }
+        }
+      }
+
+      // Selecting the process to be scheduled
+      for (p = proc; p < &proc[NPROC]; p++)
+      {
+        if (p->state == RUNNABLE)
+        {
+          if (chosenProc == 0)
+          {
+            chosenProc = p;
+            highest_queue = chosenProc->current_queue;
+          }
+          else if (p->current_queue < highest_queue)
+          {
+            chosenProc = p;
+            highest_queue = chosenProc->current_queue;
+          }
+          else if (p->current_queue == highest_queue && p->entry_time < chosenProc->entry_time)
+          {
+            chosenProc = p;
+          }
+        }
+      }
+
+      // Schedule the chosen process
+      if (chosenProc != 0)
+      {
+        acquire(PROC_LOCK(chosenProc));
+        if (chosenProc->state == RUNNABLE)
+        {
+          chosenProc->no_of_times_scheduled = chosenProc->no_of_times_scheduled + 1;
+          chosenProc->entry_time = ticks;
+
+          // Running the process.
+          chosenProc->state = RUNNING;
+          c->proc = chosenProc;
+          swtch(&c->context, &chosenProc->context);
+
+          // Process is done running.
+          c->proc = 0;
+          chosenProc->queue_ticks[chosenProc->current_queue] += (ticks - chosenProc->entry_time);
+        }
+        release(PROC_LOCK(chosenProc));
       }
     }
   }

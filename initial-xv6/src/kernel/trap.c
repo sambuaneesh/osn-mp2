@@ -16,6 +16,25 @@ void kernelvec();
 
 extern int devintr();
 
+// writing a function to change the tick count of the queue based on the queue number
+// queue number 0 = 1 timer tick
+// queue number 1 = 3 timer ticks
+// queue number 2 = 9 timer ticks
+// queue number 3 = 15 timer ticks
+int get_ticks(int queue_number)
+{
+  if (queue_number == 0)
+    return 1;
+  else if (queue_number == 1)
+    return 3;
+  else if (queue_number == 2)
+    return 9;
+  else if (queue_number == 3)
+    return 15;
+  else
+    return 0;
+}
+
 void trapinit(void)
 {
   initlock(&tickslock, "time");
@@ -93,11 +112,29 @@ void usertrap(void)
     }
   }
 
-  // give up the CPU if this is a timer interrupt.
-  #ifdef RR_SCHED
-    if (which_dev == 2)
-      yield();
-  #endif
+// give up the CPU if this is a timer interrupt.
+#ifdef RR_SCHED
+  if (which_dev == 2)
+    yield();
+#endif
+
+#if !defined(FCFS_SCHED)
+  if (which_dev == 2)
+  {
+#ifdef MLFQ_SCHED
+    // Demotion of process if time slice has elapsed
+    struct proc *p = myproc();
+    if ((ticks - p->entry_time) > (get_ticks(p->current_queue)))
+    {
+      p->queue_ticks[p->current_queue] += (ticks - p->entry_time);
+      if (p->current_queue < 3)
+        p->current_queue++;
+      p->entry_time = ticks;
+    }
+#endif
+    yield();
+  }
+#endif
 
   usertrapret();
 }
@@ -168,14 +205,40 @@ void kerneltrap()
     panic("kerneltrap");
   }
 
-  // give up the CPU if this is a timer interrupt.
-  #ifdef RR_SCHED
-    if (which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING)
-     yield();
-  #endif
+// give up the CPU if this is a timer interrupt.
+#ifdef RR_SCHED
+  if (which_dev == 2)
+  {
+    struct proc *current_process = myproc();
+    if (current_process != 0 && current_process->state == RUNNING)
+    {
+      yield();
+    }
+  }
+#endif
 
-  // the yield() may have caused some traps to occur,
-  // so restore trap registers for use by kernelvec.S's sepc instruction.
+// Restoring trap registers after potential traps caused by yield().
+#if !defined(FCFS_SCHED)
+  if (which_dev == 2)
+  {
+    struct proc *current_process = myproc();
+    if (current_process != 0 && current_process->state == RUNNING)
+    {
+#ifdef MLFQ_SCHED
+      // Demotion of process if time slice has elapsed
+      if ((ticks - current_process->entry_time) > (get_ticks(current_process->current_queue)))
+      {
+        current_process->queue_ticks[current_process->current_queue] += (ticks - current_process->entry_time);
+        if (current_process->current_queue < 3)
+          current_process->current_queue++;
+        current_process->entry_time = ticks;
+      }
+#endif
+      yield();
+    }
+  }
+#endif
+
   w_sepc(sepc);
   w_sstatus(sstatus);
 }
