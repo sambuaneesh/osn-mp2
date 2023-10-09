@@ -62,7 +62,7 @@ void receive_data_packets(int sockfd)
     char decoded_message[MAX_CHUNKS * MAX_CHUNK_SIZE];
     memset(decoded_message, 0, sizeof(decoded_message));
 
-    for (int i = 0; i <= highest_seq_num; ++i)
+    for (int i = 0; i <= total_chunks; ++i)
     {
         strncat(decoded_message, received_packets[i].data, MAX_CHUNK_SIZE);
     }

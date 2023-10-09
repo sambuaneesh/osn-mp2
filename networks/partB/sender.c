@@ -22,7 +22,7 @@ int main() {
     receiver_addr.sin_port = htons(12345);
     receiver_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
-    char message[] = "East or West KV sir is the best!";
+    char message[] = "East or West KV sir is the best!!!!!!!!";
     int total_chunks = (strlen(message) + MAX_CHUNK_SIZE - 1) / MAX_CHUNK_SIZE;
 
     printf("Total Chunks: %d\n", total_chunks);

@@ -9,3 +9,5 @@ OSN Monsoon 2023 mini project 2
 
 - You are free to delete these instructions and add your report before submitting. 
 
+---
+Refer README in `initial_xv6/` for more details.
