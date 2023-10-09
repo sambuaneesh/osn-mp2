@@ -94,6 +94,7 @@ enum procstate
 
 #define WAITING_LIMIT 16
 #define MLFQ_QUEUES 4
+#define INIT(x) x = 0
 
 // Per-process state
 struct proc
@@ -134,11 +135,14 @@ struct proc
   int created_time;            // When was the process created FCFS
   int arrival_time_cx;
 
-  uint64 entry_time;             // Entry time in the current queue
-  uint64 queue_ticks[MLFQ_QUEUES];         // Number of ticks done in each queue
-  uint64 current_queue;          // Current queue number of the process
-  uint64 no_of_times_scheduled;  // The number of times the process has been scheduled
+  int current_q;
+  int previous_q;
+  int time_wait;
+  int timeRunning_q;
 
 };
+
+void push_MLFQ(struct proc *p, int queue);
+void pop_MLFQ(struct proc *p, int queue);
 
 extern struct proc proc[NPROC];

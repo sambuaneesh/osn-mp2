@@ -6,6 +6,11 @@
 #include "proc.h"
 #include "defs.h"
 
+extern int time_slice[4];
+extern struct proc *proc_queues[4][NPROC];
+extern int count_queues[4];
+
+
 struct spinlock tickslock;
 uint ticks;
 
@@ -21,19 +26,19 @@ extern int devintr();
 // queue number 1 = 3 timer ticks
 // queue number 2 = 9 timer ticks
 // queue number 3 = 15 timer ticks
-int get_ticks(int queue_number)
-{
-  if (queue_number == 0)
-    return 1;
-  else if (queue_number == 1)
-    return 3;
-  else if (queue_number == 2)
-    return 9;
-  else if (queue_number == 3)
-    return 15;
-  else
-    return 0;
-}
+// int get_ticks(int queue_number)
+// {
+//   if (queue_number == 0)
+//     return 1;
+//   else if (queue_number == 1)
+//     return 3;
+//   else if (queue_number == 2)
+//     return 9;
+//   else if (queue_number == 3)
+//     return 15;
+//   else
+//     return 0;
+// }
 
 void trapinit(void)
 {
@@ -121,18 +126,37 @@ void usertrap(void)
 #if !defined(FCFS_SCHED)
   if (which_dev == 2)
   {
-#ifdef MLFQ_SCHED
-    // Demotion of process if time slice has elapsed
-    struct proc *p = myproc();
-    if ((ticks - p->entry_time) > (get_ticks(p->current_queue)))
+    #ifdef MLFQ_SCHED
+    if (p != 0 && p->state == RUNNING)
     {
-      p->queue_ticks[p->current_queue] += (ticks - p->entry_time);
-      if (p->current_queue < 3)
-        p->current_queue++;
-      p->entry_time = ticks;
+      if (p->timeRunning_q >= time_slice[p->previous_q])
+      {
+        if (p->previous_q != 3)
+        {
+          push_MLFQ(p, (p->previous_q + 1));
+        }
+        else
+        {
+          push_MLFQ(p, 3);
+        }
+        yield();
+      }
+    }
+
+    if (p->state == RUNNING)
+    {
+      int INIT(i);
+      while (i < p->previous_q) {
+        if (count_queues[i] != 0) {
+          if (proc_queues[i][count_queues[i] - 1]->state == RUNNABLE) {
+            push_MLFQ(p, p->previous_q);
+            yield();
+          }
+        }
+        i++;
+      }
     }
 #endif
-    yield();
   }
 #endif
 
@@ -218,26 +242,41 @@ void kerneltrap()
 #endif
 
 // Restoring trap registers after potential traps caused by yield().
-#if !defined(FCFS_SCHED)
-  if (which_dev == 2)
-  {
-    struct proc *current_process = myproc();
-    if (current_process != 0 && current_process->state == RUNNING)
-    {
+if (which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING){
 #ifdef MLFQ_SCHED
-      // Demotion of process if time slice has elapsed
-      if ((ticks - current_process->entry_time) > (get_ticks(current_process->current_queue)))
+    struct proc *p = myproc();
+
+    if (p->timeRunning_q >= time_slice[p->previous_q])
+    {
+      if (p->previous_q != 3)
       {
-        current_process->queue_ticks[current_process->current_queue] += (ticks - current_process->entry_time);
-        if (current_process->current_queue < 3)
-          current_process->current_queue++;
-        current_process->entry_time = ticks;
+        push_MLFQ(p, p->previous_q + 1);
       }
-#endif
+      else
+      {
+        push_MLFQ(p, 3);
+      }
       yield();
     }
-  }
+
+    if (p->state == RUNNING)
+    {
+      int INIT(i);
+      while (i < p->previous_q)
+      {
+        if (count_queues[i] != 0)
+        {
+          if (proc_queues[i][count_queues[i] - 1]->state == RUNNABLE)
+          {
+            push_MLFQ(p, p->previous_q);
+            yield();
+          }
+        }
+        i++;
+      }
+    }
 #endif
+}
 
   w_sepc(sepc);
   w_sstatus(sstatus);
