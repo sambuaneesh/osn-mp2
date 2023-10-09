@@ -6,10 +6,9 @@
 #include "proc.h"
 #include "defs.h"
 
-extern int time_slice[4];
+extern int time_slice[MLFQ_QUEUES];
 extern struct proc *proc_queues[4][NPROC];
-extern int count_queues[4];
-
+extern int count_queues[MLFQ_QUEUES];
 
 struct spinlock tickslock;
 uint ticks;
@@ -109,7 +108,7 @@ void usertrap(void)
     memmove(tf, p->trapframe, PGSIZE);
     p->alarm_tf = tf;
 
-    p->cur_ticks++;
+    p->cur_ticks = p->cur_ticks + 1;
     if (p->cur_ticks >= p->ticks)
     {
       p->trapframe->epc = p->handler;
@@ -123,15 +122,14 @@ void usertrap(void)
     yield();
 #endif
 
-#if !defined(FCFS_SCHED)
   if (which_dev == 2)
   {
-    #ifdef MLFQ_SCHED
+#ifdef MLFQ_SCHED
     if (p != 0 && p->state == RUNNING)
     {
       if (p->timeRunning_q >= time_slice[p->previous_q])
       {
-        if (p->previous_q != 3)
+        if (p->previous_q != MLFQ_QUEUES-1)
         {
           push_MLFQ(p, (p->previous_q + 1));
         }
@@ -146,19 +144,21 @@ void usertrap(void)
     if (p->state == RUNNING)
     {
       int INIT(i);
-      while (i < p->previous_q) {
-        if (count_queues[i] != 0) {
-          if (proc_queues[i][count_queues[i] - 1]->state == RUNNABLE) {
+      while (i < p->previous_q)
+      {
+        if (count_queues[i] != 0)
+        {
+          if (proc_queues[i][count_queues[i] - 1]->state == RUNNABLE)
+          {
             push_MLFQ(p, p->previous_q);
             yield();
           }
         }
-        i++;
+        i = i+1;
       }
     }
 #endif
   }
-#endif
 
   usertrapret();
 }
@@ -241,14 +241,15 @@ void kerneltrap()
   }
 #endif
 
-// Restoring trap registers after potential traps caused by yield().
-if (which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING){
+  // Restoring trap registers after potential traps caused by yield().
+  if (which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING)
+  {
 #ifdef MLFQ_SCHED
     struct proc *p = myproc();
 
     if (p->timeRunning_q >= time_slice[p->previous_q])
     {
-      if (p->previous_q != 3)
+      if (p->previous_q != MLFQ_QUEUES-1) // if not the last queue
       {
         push_MLFQ(p, p->previous_q + 1);
       }
@@ -272,11 +273,11 @@ if (which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING){
             yield();
           }
         }
-        i++;
+        i = i+1;
       }
     }
 #endif
-}
+  }
 
   w_sepc(sepc);
   w_sstatus(sstatus);

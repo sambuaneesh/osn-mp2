@@ -10,10 +10,9 @@ struct cpu cpus[NCPU];
 
 struct proc proc[NPROC];
 
-struct proc *proc_queues[4][NPROC] = {0};
+struct proc *proc_queues[MLFQ_QUEUES][NPROC] = {0};
 int count_queues[MLFQ_QUEUES] = {0, 0, 0, 0};
 int time_slice[MLFQ_QUEUES] = {1, 3, 9, 15};
-
 
 struct proc *initproc;
 
@@ -163,12 +162,12 @@ found:
   p->alarm_on = 0;
   p->cur_ticks = 0;
   p->handlerpermission = 1;
-  #ifdef MLFQ_SCHED
-    p->current_q = -1;
-    p->previous_q = -1;
-    p->time_wait = 0;
-    p->timeRunning_q = 0;
-  #endif
+#ifdef MLFQ_SCHED
+  p->current_q = -1;
+  p->previous_q = -1;
+  p->time_wait = 0;
+  p->timeRunning_q = 0;
+#endif
   return p;
 }
 
@@ -269,7 +268,6 @@ void push_MLFQ(struct proc *p, int queue)
   INIT(p->time_wait);
   INIT(p->timeRunning_q);
 }
-
 
 void pop_MLFQ(struct proc *p, int queue)
 {
@@ -534,18 +532,20 @@ int wait(uint64 addr)
 // need a typedef to declare choices like one, two, three
 struct Choices
 {
-  int one,two,three;
+  int one, two, three;
 };
 
 void scheduler(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
-  struct Choices sched = {1,2,3};
-  sched.one = 1; sched.two = 2; sched.three = 3;
+  struct Choices sched = {1, 2, 3};
+  sched.one = 1;
+  sched.two = 2;
+  sched.three = 3;
   c->proc = 0;
 
-  while(1)
+  while (1)
   {
     intr_on();
 
@@ -618,119 +618,123 @@ void scheduler(void)
     else if (choice == sched.three)
     { // MLFQ Scheduling
 
-    for (p = proc; p < &proc[NPROC]; p++)
-    {
-      if (p != 0)
+      for (p = proc; p < &proc[NPROC]; p++)
       {
-        acquire(&p->lock);
-        if (p->state == RUNNABLE)
-        {
-          if (p->current_q == -1 && p->previous_q == -1)
-          {
-            push_MLFQ(p, 0);
-          }
-          else if (p->current_q == -1)
-          {
-            push_MLFQ(p, p->previous_q);
-          }
-        }
-        if (p->state == ZOMBIE || p->state == SLEEPING)
-        {
-          if (p->current_q != -1)
-          {
-            pop_MLFQ(p, p->current_q);
-          }
-        }
-        release(&p->lock);
-      }
-    }
-
-    p = myproc();
-
-    if (p != 0 && p->state == RUNNING)
-    {
-      if (p->timeRunning_q >= time_slice[p->previous_q])
-      {
-        if (p->previous_q != 3)
-        {
-          push_MLFQ(p, (p->previous_q + 1));
-        }
-        else
-        {
-          push_MLFQ(p, 3);
-        }
-        yield();
-      }
-    }
-
-    if (p != 0 && p->state == RUNNING)
-    {
-      int INIT(i);
-      while (i < p->previous_q)
-      {
-        if (count_queues[i] != 0 && proc_queues[i][count_queues[i] - 1]->state == RUNNABLE)
-        {
-          push_MLFQ(p, p->previous_q);
-          yield();
-        }
-        i++;
-      }
-    }
-
-    for (int i = 1; i < 4; i++)
-    {
-      int INIT(j);
-      while (j < count_queues[i])
-      {
-        p = proc_queues[i][j];
-        acquire(&p->lock);
-        if (p->state == RUNNABLE)
-        {
-          if (p->time_wait > 30)
-          {
-            pop_MLFQ(p, p->current_q);
-            push_MLFQ(p, p->previous_q - 1);
-          }
-        }
-        release(&p->lock);
-        j++;
-      }
-    }
-
-    struct proc *p_multilevel = 0;
-
-    int done = 0;
-    for (int i = 0; i < 4; i++)
-    {
-      int j = 0;
-      while (j < count_queues[i])
-      {
-        p = proc_queues[i][j];
         if (p != 0)
         {
           acquire(&p->lock);
-          if (p != 0 && p->state == RUNNABLE)
+          if (p->state == RUNNABLE)
           {
-            p_multilevel = p;
-            pop_MLFQ(p, i);
-            p_multilevel->state = RUNNING;
-            c->proc = p_multilevel;
-            swtch(&c->context, &p_multilevel->context);
-            c->proc = 0;
-            release(&p_multilevel->lock);
-            done = 1;
-            break;
+            if (p->current_q == -1 && p->previous_q == -1)
+            {
+              push_MLFQ(p, 0);
+            }
+            else if (p->current_q == -1)
+            {
+              push_MLFQ(p, p->previous_q);
+            }
+          }
+          if (p->state == ZOMBIE || p->state == SLEEPING)
+          {
+            if (p->current_q != -1)
+            {
+              pop_MLFQ(p, p->current_q);
+            }
           }
           release(&p->lock);
         }
-        j++;
       }
 
-      if (done)
+      p = myproc();
+
+      if (p != 0 && p->state == RUNNING)
       {
-        break;
+        if (p->timeRunning_q >= time_slice[p->previous_q])
+        {
+          if (p->previous_q != MLFQ_QUEUES-1) //last queue
+          {
+            push_MLFQ(p, (p->previous_q + 1));
+          }
+          else
+          {
+            push_MLFQ(p, 3);
+          }
+          yield();
+        }
       }
-    }
+
+      if (p != 0 && p->state == RUNNING)
+      {
+        int INIT(i);
+        while (i < p->previous_q)
+        {
+          if (count_queues[i] != 0)
+          {
+            if (proc_queues[i][count_queues[i] - 1]->state == RUNNABLE)
+            {
+              push_MLFQ(p, p->previous_q);
+              yield();
+            }
+          }
+          i++;
+        }
+      }
+
+      for (int i = 1; i < MLFQ_QUEUES; i++)
+      {
+        int INIT(j);
+        while (j < count_queues[i])
+        {
+          p = proc_queues[i][j];
+          acquire(&p->lock);
+          if (p->state == RUNNABLE)
+          {
+
+            if (p->time_wait > MLFQ_WAIT_TIME)
+            {
+              pop_MLFQ(p, p->current_q);
+              push_MLFQ(p, p->previous_q - 1);
+            }
+          }
+          release(&p->lock);
+          j++;
+        }
+      }
+
+      struct proc *p_multilevel = 0;
+
+      int INIT(done);
+      for (int i = 0; i < MLFQ_QUEUES; i++)
+      {
+        int INIT(j);
+        while (j < count_queues[i])
+        {
+          p = proc_queues[i][j];
+          if (p != 0)
+          {
+            acquire(&p->lock);
+            if (p != 0 && p->state == RUNNABLE)
+            {
+              p_multilevel = p;
+              pop_MLFQ(p, i);
+              p_multilevel->state = RUNNING;
+              c->proc = p_multilevel;
+              swtch(&c->context, &p_multilevel->context);
+              c->proc = 0;
+              release(&p_multilevel->lock);
+              done = 1;
+              break;
+            }
+            release(&p->lock);
+          }
+          j++;
+        }
+
+        if (done)
+        {
+          break;
+        }
+      }
     }
   }
 }
@@ -836,9 +840,9 @@ void wakeup(void *chan)
       if (p->state == SLEEPING && p->chan == chan)
       {
         p->state = RUNNABLE;
-// #ifdef MLFQ_SCHED
-//         push(p, p->previous_q);
-// #endif
+        // #ifdef MLFQ_SCHED
+        //         push(p, p->previous_q);
+        // #endif
       }
       release(&p->lock);
     }

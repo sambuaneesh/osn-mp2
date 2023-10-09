@@ -93,6 +93,7 @@ enum procstate
 };
 
 #define WAITING_LIMIT 16
+#define MLFQ_WAIT_TIME 30
 #define MLFQ_QUEUES 4
 #define INIT(x) x = 0
 
