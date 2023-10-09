@@ -44,10 +44,10 @@ void receive_data_packets(int sockfd)
 
             total_chunks++; // Increment total chunks received
             // Skip every third packet
-            if (total_chunks % 3 == 0) {
-                printf("Skipping chunk %d.\n", received_packet.seq_num);
-                continue; // Skip the packet, don't acknowledge
-            }
+            // if (total_chunks % 3 == 0) {
+            //     printf("Skipping chunk %d.\n", received_packet.seq_num);
+            //     continue; // Skip the packet, don't acknowledge
+            // }
 
             ack_status[received_packet.seq_num] = 1; // Mark the packet as acknowledged
             highest_seq_num = received_packet.seq_num; // Update the highest sequence number
