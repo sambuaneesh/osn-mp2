@@ -19,6 +19,7 @@ void receive_data_packets(int sockfd)
     struct sockaddr_in sender_addr;
 
     int highest_seq_num = -1;
+    int total_chunks = 0;
 
     srand(time(NULL)); // Seed for random number generation
 
@@ -35,26 +36,25 @@ void receive_data_packets(int sockfd)
                 break;
             }
 
-            // Introduce randomness for packet skipping
-            // int skip_packet = rand() % 2; // 50% chance of skipping a packet
-
-            // if (skip_packet) {
-            //     printf("Skipping chunk %d.\n", received_packet.seq_num);
-            //     continue; // Skip the packet, don't acknowledge
-            // }
-
-            if (received_packet.seq_num > highest_seq_num)
-            {
-                highest_seq_num = received_packet.seq_num;
-                received_packets[highest_seq_num] = received_packet;
-                printf("Received chunk %d: %s\n", highest_seq_num, received_packet.data);
-                send_ack(sockfd, highest_seq_num, sender_addr);
+            // Check if the packet is already acknowledged
+            if (ack_status[received_packet.seq_num]) {
+                // printf("Duplicate chunk %d received and ignored.\n", received_packet.seq_num);
+                continue; // Skip the packet, it's a duplicate
             }
-            else
-            {
-                // Duplicate chunk received, resend ACK for the last correctly received chunk
-                send_ack(sockfd, highest_seq_num, sender_addr);
+
+            total_chunks++; // Increment total chunks received
+            // Skip every third packet
+            if (total_chunks % 3 == 0) {
+                printf("Skipping chunk %d.\n", received_packet.seq_num);
+                continue; // Skip the packet, don't acknowledge
             }
+
+            ack_status[received_packet.seq_num] = 1; // Mark the packet as acknowledged
+            highest_seq_num = received_packet.seq_num; // Update the highest sequence number
+            received_packets[highest_seq_num] = received_packet;
+
+            printf("Received chunk %d: %s\n", highest_seq_num, received_packet.data);
+            send_ack(sockfd, highest_seq_num, sender_addr); // Send acknowledgment for the current packet
         }
     }
 

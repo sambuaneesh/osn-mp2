@@ -1,3 +1,4 @@
+// Sending Different Packets
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,8 +11,7 @@
 
 #include "common.h"
 
-int main()
-{
+int main() {
     int sockfd;
     struct sockaddr_in receiver_addr;
     struct Packet packet;
@@ -33,18 +33,29 @@ int main()
 
     int seq_num = 0;
     int resend = 1;
+    int ack_received[MAX_CHUNKS] = {0}; // Array to track acknowledgment status
 
-    while (seq_num < total_chunks || resend)
-    {
-        if (resend || (seq_num < total_chunks))
-        {
-            packet.seq_num = seq_num;
-            strncpy(packet.data, message + seq_num * MAX_CHUNK_SIZE, MAX_CHUNK_SIZE);
+    while (1) { // Run infinitely until all packets are acknowledged
+        int any_unacknowledged = 0; // Flag to check if any unacknowledged packets exist
 
+        for (int i = 0; i < total_chunks; ++i) {
+            if (!ack_received[i]) {
+                any_unacknowledged = 1;
+                packet.seq_num = i;
+                strncpy(packet.data, message + i * MAX_CHUNK_SIZE, MAX_CHUNK_SIZE);
+                sendto(sockfd, &packet, sizeof(struct Packet), 0, (struct sockaddr *)&receiver_addr, sizeof(receiver_addr));
+                printf("Sent chunk %d: %s\n", i, packet.data);
+                // sleep for 0.5 seconds
+                usleep(10000);
+            }
+        }
+
+        if (!any_unacknowledged) {
+            // All packets have been acknowledged, send termination signal
+            packet.seq_num = -1;
             sendto(sockfd, &packet, sizeof(struct Packet), 0, (struct sockaddr *)&receiver_addr, sizeof(receiver_addr));
-            printf("Sent chunk %d: %s\n", seq_num, packet.data);
-
-            resend = 0;
+            printf("Sent termination signal.\n");
+            break; // Exit the loop as all packets are acknowledged
         }
 
         fd_set readfds;
@@ -57,36 +68,24 @@ int main()
 
         int activity = select(sockfd + 1, &readfds, NULL, NULL, &timeout);
 
-        if (activity < 0)
-        {
+        if (activity < 0) {
             perror("select error");
             break;
-        }
-        else if (activity > 0 && FD_ISSET(sockfd, &readfds))
-        {
+        } else if (activity > 0 && FD_ISSET(sockfd, &readfds)) {
             // Received an acknowledgment
             recvfrom(sockfd, &packet, sizeof(struct Packet), 0, NULL, NULL);
             printf("Received acknowledgment for chunk %d\n", packet.seq_num);
-            seq_num++;
-            resend = 0;
-        }
-        else
-        {
-            // Timeout, need to resend the current chunk
-            resend = 1;
+            // continue;
+            usleep(100000);
+            ack_received[packet.seq_num] = 1;
         }
     }
-
-    // Send termination signal to indicate end of data
-    packet.seq_num = -1; // Special sequence number indicating termination
-    sendto(sockfd, &packet, sizeof(struct Packet), 0, (struct sockaddr *)&receiver_addr, sizeof(receiver_addr));
-    printf("Sent termination signal.\n");
 
     close(sockfd);
     return 0;
 }
 
-// Continous Sending
+// Sending Same Packet Multiple Times
 // #include <stdio.h>
 // #include <stdlib.h>
 // #include <string.h>
@@ -99,7 +98,8 @@ int main()
 
 // #include "common.h"
 
-// int main() {
+// int main()
+// {
 //     int sockfd;
 //     struct sockaddr_in receiver_addr;
 //     struct Packet packet;
@@ -110,7 +110,7 @@ int main()
 //     receiver_addr.sin_port = htons(12345);
 //     receiver_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
-//     char message[] = "hello world lacasa decasa";
+//     char message[] = "East or West KV sir is the best!";
 //     int total_chunks = (strlen(message) + MAX_CHUNK_SIZE - 1) / MAX_CHUNK_SIZE;
 
 //     printf("Total Chunks: %d\n", total_chunks);
@@ -121,29 +121,18 @@ int main()
 
 //     int seq_num = 0;
 //     int resend = 1;
-//     int ack_received[MAX_CHUNKS] = {0}; // Array to track acknowledgment status
 
-//     while (1) { // Run infinitely until all packets are acknowledged
-//         int any_unacknowledged = 0; // Flag to check if any unacknowledged packets exist
+//     while (seq_num < total_chunks || resend)
+//     {
+//         if (resend || (seq_num < total_chunks))
+//         {
+//             packet.seq_num = seq_num;
+//             strncpy(packet.data, message + seq_num * MAX_CHUNK_SIZE, MAX_CHUNK_SIZE);
 
-//         for (int i = 0; i < total_chunks; ++i) {
-//             if (!ack_received[i]) {
-//                 any_unacknowledged = 1;
-//                 packet.seq_num = i;
-//                 strncpy(packet.data, message + i * MAX_CHUNK_SIZE, MAX_CHUNK_SIZE);
-//                 sendto(sockfd, &packet, sizeof(struct Packet), 0, (struct sockaddr *)&receiver_addr, sizeof(receiver_addr));
-//                 printf("Sent chunk %d: %s\n", i, packet.data);
-//                 // sleep for 0.5 seconds
-//                 usleep(10000);
-//             }
-//         }
-
-//         if (!any_unacknowledged) {
-//             // All packets have been acknowledged, send termination signal
-//             packet.seq_num = -1;
 //             sendto(sockfd, &packet, sizeof(struct Packet), 0, (struct sockaddr *)&receiver_addr, sizeof(receiver_addr));
-//             printf("Sent termination signal.\n");
-//             break; // Exit the loop as all packets are acknowledged
+//             printf("Sent chunk %d: %s\n", seq_num, packet.data);
+
+//             resend = 0;
 //         }
 
 //         fd_set readfds;
@@ -156,18 +145,30 @@ int main()
 
 //         int activity = select(sockfd + 1, &readfds, NULL, NULL, &timeout);
 
-//         if (activity < 0) {
+//         if (activity < 0)
+//         {
 //             perror("select error");
 //             break;
-//         } else if (activity > 0 && FD_ISSET(sockfd, &readfds)) {
+//         }
+//         else if (activity > 0 && FD_ISSET(sockfd, &readfds))
+//         {
 //             // Received an acknowledgment
 //             recvfrom(sockfd, &packet, sizeof(struct Packet), 0, NULL, NULL);
 //             printf("Received acknowledgment for chunk %d\n", packet.seq_num);
-//             // continue;
-//             usleep(100000);
-//             ack_received[packet.seq_num] = 1;
+//             seq_num++;
+//             resend = 0;
+//         }
+//         else
+//         {
+//             // Timeout, need to resend the current chunk
+//             resend = 1;
 //         }
 //     }
+
+//     // Send termination signal to indicate end of data
+//     packet.seq_num = -1; // Special sequence number indicating termination
+//     sendto(sockfd, &packet, sizeof(struct Packet), 0, (struct sockaddr *)&receiver_addr, sizeof(receiver_addr));
+//     printf("Sent termination signal.\n");
 
 //     close(sockfd);
 //     return 0;
